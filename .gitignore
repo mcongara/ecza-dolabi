@@ -1,0 +1,18 @@
+node_modules/
+.next/
+.env*
+!.env.example
+.firecrawl/
+*.tsbuildinfo
+
+# Local files, generated output and credentials
+.DS_Store
+.vercel/
+out/
+coverage/
+*.log
+*.pem
+*.key
+.hallmark/
+WIP.md
+ecza-ilaclar-*.json
