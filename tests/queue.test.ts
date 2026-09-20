@@ -1,10 +1,47 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {otcSummary,pendingMedicines,parseBackup,type Evaluation} from '../lib/queue';
+import {otcSummary,pendingMedicines,parseBackup,presentInOrder,type Evaluation} from '../lib/queue';
 import {decide,type Medicine} from '../lib/analysis';
 const first:Medicine={id:'first',name:'Parol 500 mg',notes:'',expiry:'',condition:'unknown',confirmed:true};
 const second={...first,id:'second'};
 const evaluated:Evaluation={result:decide(first,'pain',1),model:'typesafe-ai/jev',elapsedMs:200,usage:{},answer:{choice:'pain'}};
+test('batch results each remain visible in order, including at batch boundaries',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const shown:string[]=[];
+ const controller=new AbortController();
+ let finished=false;
+ const presentation=(async()=>{
+  await presentInOrder([first,second],m=>shown.push(m.id),controller.signal);
+  await presentInOrder([{...first,id:'next-batch'}],m=>shown.push(m.id),controller.signal);
+  finished=true;
+ })();
+ assert.deepEqual(shown,['first']);
+ t.mock.timers.tick(149);
+ await Promise.resolve();
+ assert.deepEqual(shown,['first']);
+ t.mock.timers.tick(1);
+ await Promise.resolve();
+ assert.deepEqual(shown,['first','second']);
+ t.mock.timers.tick(150);
+ await Promise.resolve();await Promise.resolve();
+ assert.deepEqual(shown,['first','second','next-batch']);
+ assert.equal(finished,false);
+ t.mock.timers.tick(150);
+ await presentation;
+ assert.equal(finished,true);
+});
+test('leaving the page cancels presentation without showing more records',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const shown:string[]=[];
+ const controller=new AbortController();
+ const presentation=presentInOrder([first,second],m=>shown.push(m.id),controller.signal);
+ controller.abort();
+ await presentation;
+ t.mock.timers.tick(10000);
+ assert.deepEqual(shown,['first']);
+ await presentInOrder([second],m=>shown.push(m.id),controller.signal);
+ assert.deepEqual(shown,['first']);
+});
 test('completed records are not sent again; failed records stay pending',()=>{assert.deepEqual(pendingMedicines([first,second],{first:evaluated}).map(m=>m.id),['second'])});
 test('new records are queued without invalidating previous results',()=>{const third={...first,id:'third'};assert.deepEqual(pendingMedicines([first,third],{first:evaluated}).map(m=>m.id),['third'])});
 test('a captured batch does not gain records added during evaluation',()=>{const medicines=[first];const captured=pendingMedicines(medicines,{});medicines.push(second);assert.deepEqual(captured.map(m=>m.id),['first'])});

@@ -21,6 +21,23 @@ export function classificationSummary(answer: Evaluation['answer']): string {
 export function pendingMedicines(medicines: Medicine[], evaluations: Record<string,Evaluation>): Medicine[] {
  return medicines.filter(m=>!evaluations[m.id]);
 }
+/** Give every returned result its own visible turn, including the last in a batch. */
+export async function presentInOrder<T>(items: readonly T[], show: (item: T, index: number) => void, signal: AbortSignal, durationMs = 150): Promise<void> {
+ for (const [index, item] of items.entries()) {
+  if (signal.aborted) return;
+  show(item, index);
+  await new Promise<void>(resolve => {
+   const finish = () => {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', finish);
+    resolve();
+   };
+   const timer = setTimeout(finish, durationMs);
+   signal.addEventListener('abort', finish, { once: true });
+   if (signal.aborted) finish();
+  });
+ }
+}
 const resultSchema = z.object({
  id: z.string(), name: z.string(),
  category: z.enum(['pain','antibiotic','allergy','stomach','chronic','topical','supplement','unknown']),
